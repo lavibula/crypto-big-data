@@ -1,0 +1,2 @@
+data_collection_dag.py -> Định nghĩa DAG trong Apache Airflow để thu thập dữ liệu từ API.
+Nội dung: Tệp này sử dụng Airflow Operators (PythonOperator, DummyOperator, etc.) để thực hiện các tác vụ như thu thập dữ liệu lịch sử, xử lý dữ liệu, và lưu vào hệ thống lưu trữ.
