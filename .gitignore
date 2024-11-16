@@ -1,0 +1,5 @@
+*.log
+*.parquet
+*.csv
+__pycache__/
+*.pyc

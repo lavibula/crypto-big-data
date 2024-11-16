@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # PostgreSQL service for storing historical data
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: huster123
+      POSTGRES_DB: crypto_data
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  # Kafka broker for real-time data streaming
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: kafka
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT
+      KAFKA_LISTENER_INTERNAL: INSIDE://kafka:9093
+      KAFKA_LISTENER_EXTERNAL: EXTERNAL://localhost:9093
+      KAFKA_LISTENER_PORT: 9093
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    ports:
+      - "9093:9093"
+    depends_on:
+      - zookeeper
+
+  # Zookeeper service for Kafka
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+
+  # Spark Master service for distributed processing
+  spark-master:
+    image: bitnami/spark:3.3
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"  # Spark UI for monitoring
+
+  # Spark Worker service for distributed processing
+  spark-worker:
+    image: bitnami/spark:3.3
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER=spark://spark-master:7077
+    depends_on:
+      - spark-master
+
+  # HDFS service for large-scale storage
+  hdfs-namenode:
+    image: sequenceiq/hadoop-docker:2.7.0
+    container_name: hdfs-namenode
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+    ports:
+      - "50070:50070"  # Web UI Namenode
+    volumes:
+      - hdfs-namenode-data:/hadoop/dfs/name
+
+  hdfs-datanode:
+    image: sequenceiq/hadoop-docker:2.7.0
+    container_name: hdfs-datanode
+    environment:
+      - CLUSTER_NAME=hadoop-cluster
+    ports:
+      - "50075:50075"  # Web UI Datanode
+    depends_on:
+      - hdfs-namenode
+    volumes:
+      - hdfs-datanode-data:/hadoop/dfs/data
+
+  # Apache Airflow for orchestration of tasks
+  airflow:
+    image: apache/airflow:latest
+    container_name: airflow
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__WEBSERVER__WORKERS=2
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:huster123@postgres:5432/crypto_data
+    ports:
+      - "8081:8080"
+    networks:
+      - airflow-net
+    depends_on:
+      - postgres
+      - spark-master
+      - kafka
+
+  # Python Service for pulling real-time data and processing it
+  real-time-data:
+    image: python:3.8
+    container_name: real-time-data
+    build: ./real-time-data  # Your Python scripts for fetching and processing real-time data
+    environment:
+      - KAFKA_BROKER=kafka:9093
+      - GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+    volumes:
+      - ./real-time-data:/app
+    working_dir: /app
+    command: python fetch_and_process_data.py  # Run your data-fetching and processing script
+
+volumes:
+  postgres-data:
+  hdfs-namenode-data:
+  hdfs-datanode-data:
