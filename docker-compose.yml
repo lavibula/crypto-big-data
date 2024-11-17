@@ -45,6 +45,8 @@ services:
       - SPARK_MODE=master
     ports:
       - "8080:8080"  # Spark UI for monitoring
+    volumes:
+      - ./spark-data:/bitnami/spark
 
   # Spark Worker service for distributed processing
   spark-worker:
@@ -58,22 +60,22 @@ services:
 
   # HDFS service for large-scale storage
   hdfs-namenode:
-    image: sequenceiq/hadoop-docker:2.7.0
+    image: bde2020/hadoop-namenode:2.0.0-hadoop2.7.4-java8
     container_name: hdfs-namenode
     environment:
       - CLUSTER_NAME=hadoop-cluster
     ports:
-      - "50070:50070"  # Web UI Namenode
+      - "50070:50070"
     volumes:
       - hdfs-namenode-data:/hadoop/dfs/name
 
   hdfs-datanode:
-    image: sequenceiq/hadoop-docker:2.7.0
+    image: bde2020/hadoop-datanode:2.0.0-hadoop2.7.4-java8
     container_name: hdfs-datanode
     environment:
       - CLUSTER_NAME=hadoop-cluster
     ports:
-      - "50075:50075"  # Web UI Datanode
+      - "50075:50075"
     depends_on:
       - hdfs-namenode
     volumes:
@@ -89,27 +91,51 @@ services:
       - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:huster123@postgres:5432/crypto_data
     ports:
       - "8081:8080"
-    networks:
-      - airflow-net
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
     depends_on:
       - postgres
       - spark-master
       - kafka
 
-  # Python Service for pulling real-time data and processing it
-  real-time-data:
-    image: python:3.8
-    container_name: real-time-data
-    build: ./real-time-data  # Your Python scripts for fetching and processing real-time data
-    environment:
-      - KAFKA_BROKER=kafka:9093
-      - GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+# Python service for handling crypto Kafka producer/consumer
+  crypto-kafka:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-kafka
     volumes:
       - ./real-time-data:/app
-    working_dir: /app
-    command: python fetch_and_process_data.py  # Run your data-fetching and processing script
+    environment:
+      - KAFKA_HOST=kafka:9093
+    depends_on:
+      - kafka
+    command: python /app/crypto_kafka_consumer.py  # Thay đổi theo script bạn muốn chạy
+
+  # Python service for collecting and storing historical data
+  data-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: data-collector
+    volumes:
+      - ./scripts:/app
+    command: python /app/collect_data.py  # Thay đổi theo script bạn muốn chạy
 
 volumes:
   postgres-data:
+    driver: local
+    driver_opts:
+      o: bind
+      device: ./data/postgres
   hdfs-namenode-data:
+    driver: local
+    driver_opts:
+      o: bind
+      device: ./data/hdfs-namenode
   hdfs-datanode-data:
+    driver: local
+    driver_opts:
+      o: bind
+      device: ./data/hdfs-datanode
