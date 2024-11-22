@@ -67,31 +67,32 @@ def partition_data_by_date(df : pd.DataFrame):
     
     df['date'] = pd.to_datetime(df['DATE'])
     df['year'] = df['DATE'].dt.year
-    df['month'] = df['DATE'].dt.month
-    df['day'] = df['DATE'].dt.day
     return df
 
 
-def save_data(df : pd.DataFrame, crypto_id, storage_path, save_method):
+def save_data(df: pd.DataFrame, crypto_id, storage_path, save_method):
     """
-    Lưu dữ liệu vào GCS hoặc HDFS dưới dạng Parquet và phân vùng theo coin, year, month, day.
+    Lưu dữ liệu vào GCS hoặc HDFS dưới dạng Parquet và phân vùng theo coin và year.
     """
+    # Phân vùng dữ liệu theo năm
     df_partitioned = partition_data_by_date(df)
-    for _, row in df_partitioned.iterrows():
-        year, month, day = row['year'], row['month'], row['day']
-        path = f"{storage_path}/{crypto_id}/{year}/{month}/{day}/data.parquet"
-        save_method(df_partitioned, path)  # Gọi phương thức lưu trữ tùy thuộc vào `save_method`
+    
+    # Lưu dữ liệu cho mỗi năm vào một tệp riêng biệt
+    for year, year_data in df_partitioned.groupby('year'):  # Phân vùng theo năm
+        path = f"{storage_path}/{crypto_id}/{year}/data.parquet"
+        
+        # Gọi phương thức lưu trữ tùy thuộc vào `save_method`
+        save_method(year_data, path)
 
-
-def get_last_saved_date(crypto_id, storage_path):
+def get_last_saved_date(crypto_id, storage_path : str):
     """
     Kiểm tra ngày cuối cùng đã được lưu trữ trong GCS hoặc HDFS.
     """
-    storage_client = storage.Client()
-    blobs = storage_client.list_blobs(storage_path, prefix=f"{crypto_id}/")
-    
+    storage_client = storage.Client.from_service_account_json("./config/btcanalysishust-76b434df4ab3.json")
+    blobs = storage_client.list_blobs(storage_path.replace('gs://', ''), prefix=f"{crypto_id}/")
     last_saved_date = None
     for blob in blobs:
+        print(blob)
         # Trích xuất ngày từ tên thư mục
         path_parts = blob.name.split('/')
         if len(path_parts) > 3:  # {crypto_id}/{year}/{month}/{day}/data.parquet
@@ -99,7 +100,7 @@ def get_last_saved_date(crypto_id, storage_path):
             date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
             if last_saved_date is None or date > last_saved_date:
                 last_saved_date = date
-    
+
     return last_saved_date
 
 
@@ -130,18 +131,18 @@ def main(crypto_ids : list[str] = None,mental_ids : list[str] = None,  storage_p
             print(historical_prices)
 
             # Lưu dữ liệu vào GCS dưới dạng Parquet
-            if not storage_path_gcs:
+            if storage_path_gcs:
                 save_data(historical_prices, crypto_id, storage_path_gcs, save_to_gcs_parquet)
             # Hoặc bạn có thể lưu vào HDFS
-            if not storage_path_hdfs:
-                save_data(historical_prices, crypto_id, storage_path_hdfs, save_to_hdfs_parquet)
+            # if storage_path_hdfs:
+            #     save_data(historical_prices, crypto_id, storage_path_hdfs, save_to_hdfs_parquet)
 
 
 
 if __name__ == "__main__":
     # Các đồng tiền cần lấy dữ liệu
-    crypto_ids = ["BTC", "ETH"]
-    storage_path_gcs = "gs://cryto-historical-data"
+    crypto_ids = ["BTC", "ETH",'USDT','BNB','DOGE']
+    storage_path_gcs = "gs://crypto-historical-data-2"
     storage_path_hdfs = "./data/crypto-history"
 
-    main(crypto_ids, True,storage_path_gcs )
+    main(crypto_ids=crypto_ids, mental_ids=[],storage_path_gcs=storage_path_gcs )

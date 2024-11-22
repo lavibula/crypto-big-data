@@ -1,6 +1,6 @@
 from google.cloud import storage
 
-client = storage.Client.from_service_account_json("./config/btcanalysishust-db0e298cbaa3.json")
+client = storage.Client.from_service_account_json("./config/btcanalysishust-76b434df4ab3.json")
 
 buckets = list(client.list_buckets())
 print("Buckets:")

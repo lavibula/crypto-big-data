@@ -52,4 +52,4 @@ while True:
         price = get_current_price(crypto_id)
         if price:
             send_data_to_kafka(crypto_id, price)  # Gửi dữ liệu ngay lập tức vào Kafka
-    time.sleep(1)  # Lấy dữ liệu mỗi giây và gửi liên tục
+    time.sleep(60)  # Lấy dữ liệu mỗi giây và gửi liên tục

@@ -1,22 +1,31 @@
 from google.cloud import storage
 import pandas as pd
+import os
+import tempfile
 
-
-def save_to_gcs_parquet(df : pd.DataFrame, gcs_path):
+def save_to_gcs_parquet(df : pd.DataFrame, gcs_path : str):
     """
     Lưu dữ liệu DataFrame dưới dạng Parquet vào Google Cloud Storage.
     """
-    # Lưu dữ liệu dưới dạng Parquet vào GCS
-    df.to_parquet(gcs_path, engine='pyarrow')
-    
-    # Tải lên GCS
-    storage_client = storage.Client.from_service_account_json("./config/btcanalysishust-db0e298cbaa3.json")
+    # Tạo tệp Parquet tạm thời
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        local_parquet_path = tmp_file.name  # Lấy đường dẫn tệp tạm thời
+        # Lưu dữ liệu DataFrame dưới dạng Parquet vào tệp tạm thời
+        df.to_parquet(local_parquet_path, engine='pyarrow')
+
+    # Tải tệp lên GCS
+    storage_client = storage.Client.from_service_account_json("./config/btcanalysishust-76b434df4ab3.json")
     bucket_name, blob_name = gcs_path.replace('gs://', '').split('/', 1)
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
-    blob.upload_from_filename(gcs_path)
+    
+    # Tải tệp từ hệ thống cục bộ lên GCS
+    blob.upload_from_filename(local_parquet_path)
+    
+    # Xóa tệp cục bộ sau khi tải lên
+    os.remove(local_parquet_path)
+    
     print(f"Lưu dữ liệu vào GCS thành công tại: {gcs_path}")
-
 import pyarrow as pa
 import pyarrow.parquet as pq
 
