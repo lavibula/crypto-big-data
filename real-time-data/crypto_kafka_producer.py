@@ -3,53 +3,50 @@ import json
 import requests
 from datetime import datetime
 import time
+import dotenv
+import os
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+dotenv.load_dotenv(dotenv_path=env_path)
+api=os.getenv('ccdata_api')
 
-# Tạo Kafka producer
-producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],  # Địa chỉ Kafka broker
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')  # Mã hóa dữ liệu thành JSON
-)
-
-def get_current_price(crypto_id):
+def get_current_price(crypto_ids : list[str]):
     """
-    Lấy giá của đồng tiền điện tử từ API của CoinGecko.
+    Fetch cryptocurrency data from the API.
     """
-    url = f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart"
+    url = 'https://data-api.cryptocompare.com/spot/v1/latest/tick'
+    instruments=[crypto+'-USD' for crypto in crypto_ids]
     params = {
-        "vs_currency": "usd",  # Đơn vị tiền tệ là USD
-        "days": "1",  # Lấy giá trong vòng 1 ngày (sẽ lấy giá theo từng phút)
-        "interval": "minute",  # Mức độ tần suất là mỗi phút
+        "market": "kraken", 
+        'instruments': instruments,
+        "api_key": api
     }
-
+    headers = {"Content-type": "application/json; charset=UTF-8"}
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, headers=headers)
         response.raise_for_status()
-        data = response.json()
-        prices = data.get("prices", [])
-        # Chỉ lấy giá gần nhất
-        latest_price = prices[-1] if prices else None
-        if latest_price:
-            return {"date": datetime.fromtimestamp(latest_price[0] / 1000).strftime("%Y-%m-%d %H:%M:%S"), "price": latest_price[1]}
-        else:
-            return None
+        json_response = response.json()
+        return json_response['Data']
     except requests.exceptions.RequestException as e:
-        print(f"Lỗi khi gọi API: {e}")
+        print(f"Error fetching data from API: {e}")
         return None
 
-def send_data_to_kafka(crypto_id, price_data):
-    """
-    Gửi dữ liệu giá vào Kafka.
-    """
-    # Gửi dữ liệu vào Kafka Topic
-    producer.send('crypto_prices_topic', {'crypto_id': crypto_id, 'data': price_data})
-    print(f"Sent data for {crypto_id} to Kafka: {price_data}")
+class SendDataKafka:
+    def __init__(self, topic : str) -> None:
+        self.topic=topic
+        self.producer=KafkaProducer(
+            bootstrap_servers=['localhost:9092'],  # Địa chỉ Kafka broker
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')  # Mã hóa dữ liệu thành JSON
+        )
+    def send(self, crypto_id : str, price_data : dict):
+        self.producer.send(self.topic,{'crypto_ids': crypto_id, 'data': price_data})
+        print(f"Sent data for {crypto_id} to Kafka: {price_data}")
+# Gửi dữ liệu liên tục mỗi phút
+crypto_ids = ["BTC", "ETH",'USDT','BNB','DOGE']
 
-# Gửi dữ liệu liên tục mỗi giây
-crypto_ids = ["bitcoin", "ethereum", "dogecoin"]
+send_to=SendDataKafka('realtime_date')
 
 while True:
-    for crypto_id in crypto_ids:
-        price = get_current_price(crypto_id)
-        if price:
-            send_data_to_kafka(crypto_id, price)  # Gửi dữ liệu ngay lập tức vào Kafka
+    prices=get_current_price(crypto_ids)
+    for crypto in crypto_ids:
+        send_to.send(crypto, prices[crypto+'-USD'])
     time.sleep(60)  # Lấy dữ liệu mỗi giây và gửi liên tục

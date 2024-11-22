@@ -5,6 +5,15 @@ import math
 from google.cloud import storage
 from storage import save_to_gcs_parquet, save_to_hdfs_parquet  # Các hàm lưu vào GCS hoặc HDFS
 from metal_crawl import fetch_yahoo_data
+import dotenv
+import os
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+if not dotenv.load_dotenv(dotenv_path=env_path):
+        raise FileNotFoundError(f"Could not load .env file at {env_path}")
+api_key=os.getenv('ccdata_api')
+if not api_key:
+    print("Error: API_KEY is missing in the .env file.")
+    exit(1)
 
 def get_data_api(crypto_id, end_date, num_days):
     """
@@ -17,7 +26,7 @@ def get_data_api(crypto_id, end_date, num_days):
         'instrument': crypto_id + '-USD',
         'to_ts': end_timestamp,
         'limit': num_days, 
-        "api_key": "f007c27012ef526c4a0216b612c9b7f68e4a02430e08925284d2e7b613daa0e2"
+        "api_key": api
     }
     headers = {"Content-type": "application/json; charset=UTF-8"}
     try:
@@ -54,35 +63,36 @@ def get_historical_prices(crypto_id, start_date, end_date):
             curr_lastest_date = (oldest_datetime - timedelta(days=1)).strftime("%Y-%m-%d")
         else:
             break  # Exit if there's an error fetching the data
-    full_df['TIMESTAMP'] = full_df['TIMESTAMP'].apply(formated_date)
+    full_df['TIMESTAMP'] = full_df['TIMESTAMP'].apply(formatted_date)
     full_df.rename(columns={'TIMESTAMP': 'DATE'}, inplace=True)
-    full_df['DATE'] = pd.to_datetime(full_df['DATE'])
+    full_df['DATE'] = pd.to_datetime(full_df['DATE'], format='%Y-%m-%d')
     return full_df
-def formated_date(timestap):
-    return datetime.fromtimestamp(timestap).strftime('%Y-%m-%d')
-def partition_data_by_date(df : pd.DataFrame):
+def formatted_date(timestamp):
+    # Handle both seconds and milliseconds timestamps
+    if timestamp > 1e10:  # Likely in milliseconds
+        timestamp /= 1000
+    return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
+def partition_data_by_date(df: pd.DataFrame):
     """
     Phân vùng dữ liệu theo năm, tháng, ngày.
     """
-    
-    df['date'] = pd.to_datetime(df['DATE'])
-    df['year'] = df['DATE'].dt.year
+    df['YEAR'] = df['DATE'].dt.year 
+    df['MONTH'] = df['DATE'].dt.month 
     return df
-
 
 def save_data(df: pd.DataFrame, crypto_id, storage_path, save_method):
     """
-    Lưu dữ liệu vào GCS hoặc HDFS dưới dạng Parquet và phân vùng theo coin và year.
+    Lưu dữ liệu vào GCS hoặc HDFS dưới dạng Parquet và phân vùng theo coin, year, và month.
     """
-    # Phân vùng dữ liệu theo năm
+    # Phân vùng dữ liệu theo năm và tháng
     df_partitioned = partition_data_by_date(df)
     
-    # Lưu dữ liệu cho mỗi năm vào một tệp riêng biệt
-    for year, year_data in df_partitioned.groupby('year'):  # Phân vùng theo năm
-        path = f"{storage_path}/{crypto_id}/{year}/data.parquet"
+
+    for (year, month), month_data in df_partitioned.groupby(['year', 'month']): 
+        path = f"{storage_path}/{crypto_id}/{year}/{month:02}/data.parquet" 
         
         # Gọi phương thức lưu trữ tùy thuộc vào `save_method`
-        save_method(year_data, path)
+        save_method(month_data, path)
 
 def get_last_saved_date(crypto_id, storage_path : str):
     """
@@ -95,9 +105,9 @@ def get_last_saved_date(crypto_id, storage_path : str):
         print(blob)
         # Trích xuất ngày từ tên thư mục
         path_parts = blob.name.split('/')
-        if len(path_parts) > 3:  # {crypto_id}/{year}/{month}/{day}/data.parquet
-            year, month, day = path_parts[1], path_parts[2], path_parts[3]
-            date = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+        if len(path_parts) > 2: 
+            year, month = path_parts[1], path_parts[2]
+            date = f"{year}-{month.zfill(2)}-01"
             if last_saved_date is None or date > last_saved_date:
                 last_saved_date = date
 
