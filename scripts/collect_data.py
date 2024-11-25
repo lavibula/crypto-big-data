@@ -71,6 +71,8 @@ def partition_data_by_date(df: pd.DataFrame):
     """
     df['YEAR'] = df['DATE'].dt.year 
     df['MONTH'] = df['DATE'].dt.month 
+    df['DATE'] = df['DATE'].dt.strftime('%Y-%m-%d')
+
     return df
 
 def save_data(df: pd.DataFrame, crypto_id, storage_path, save_method):
@@ -166,8 +168,10 @@ if __name__ == "__main__":
     kraken_only_instruments = set(market_instruments['kraken']) - set(market_instruments['coinbase'])
     # Các đồng tiền cần lấy dữ liệu
     crypto_ids = [('coinbase', coin) for coin in market_instruments['coinbase']]+[('kraken',coin) for coin in kraken_only_instruments]
+    crypto_ids = [('coinbase', coin) for coin in ['BTC', 'ETH', 'USDT','BNB','USDC','XRP','ADA','DOGE','MATIC','SOL']]
+    
     print(f'number of instrumets is {len(crypto_ids)}')
-    storage_path_gcs = "gs://crypto-historical-data-2/ver1"
+    storage_path_gcs = "gs://crypto-historical-data-2/ver2"
     storage_path_hdfs = "./data/crypto-history"
 
     main(crypto_ids=crypto_ids, mental_ids=[],storage_path_gcs=storage_path_gcs )
