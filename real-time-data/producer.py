@@ -1,3 +1,4 @@
+import datetime
 import requests
 import json
 from kafka import KafkaProducer
@@ -15,7 +16,12 @@ def get_crypto_prices():
         response.raise_for_status()  
         data = response.json()
         
-        prices = {coin: data.get(coin, {}).get('usd', 'N/A') for coin in params["ids"].split(',')}
+        #prices = {coin: data.get(coin, {}).get('usd', 'N/A') for coin in params["ids"].split(',')}
+        timestamp = datetime.datetime.utcnow().isoformat()
+        prices = {
+            "timestamp": timestamp,
+            "prices": {coin: data.get(coin, {}).get('usd', 'N/A') for coin in params["ids"].split(',')}
+        }
         
         return prices
     except requests.exceptions.RequestException as e:
