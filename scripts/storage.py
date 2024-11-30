@@ -14,7 +14,7 @@ def save_to_gcs_parquet(df : pd.DataFrame, gcs_path : str):
         df.to_parquet(local_parquet_path, engine='pyarrow')
 
     # Tải tệp lên GCS
-    storage_client = storage.Client.from_service_account_json("./config/btcanalysishust-76b434df4ab3.json")
+    storage_client = storage.Client.from_service_account_json("./config/btcanalysishust-b10a2ef12088.json")
     bucket_name, blob_name = gcs_path.replace('gs://', '').split('/', 1)
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(blob_name)
