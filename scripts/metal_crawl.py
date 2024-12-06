@@ -51,7 +51,19 @@ def fetch_yahoo_data(start_date, end_date, symbol):
 
 
 if __name__=='__main__':
-        
+    # response=requests.get(url='https://data-api.cryptocompare.com/spot/v1/markets/instruments')
+
+    # result=response.json()
+    # market_instruments={}
+    # for i in ['coinbase','kraken']:
+    #     curr_market=result['Data'][i]['instruments']  
+    #     num_usd=[x.replace('-USD','') for x in list(curr_market.keys()) if x.endswith('-USD')]
+    #     market_instruments[i]=num_usd
+    #     print(f"{i} market has {len(num_usd)} USD active instruments")
+    # kraken_only_instruments = set(market_instruments['kraken']) - set(market_instruments['coinbase'])
+    # # Các đồng tiền cần lấy dữ liệu
+    # crypto_ids = [('coinbase', coin) for coin in market_instruments['coinbase']]+[('kraken',coin) for coin in kraken_only_instruments]
+ 
     # Example usage
     start_date = '2023-01-01'
     end_date = '2024-11-18'
