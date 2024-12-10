@@ -8,3 +8,5 @@ test.ipynb
 btcanalysishust-b10a2ef12088.json
 .env
 venv
+/config
+/spark-env
