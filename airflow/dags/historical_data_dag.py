@@ -1,3 +1,5 @@
+import os
+os.chdir("/Users/ibulmnie/Documents/20241/BigData/crypto-big-data")
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
