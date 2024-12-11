@@ -1,9 +1,7 @@
-import os
-os.chdir("/Users/ibulmnie/Documents/20241/BigData/crypto-big-data")
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from scripts.collect_data import main
+from utils.collect_data import main
 
 default_args={
     'owner': 'historical data',
@@ -20,14 +18,13 @@ dag = DAG(
     description='DAG thu thập dữ liệu lịch sử giá crypto từ CCData và lưu vào GCS',
     tags=['history'],
     start_date=datetime(2024,12,1),
-    schedule_interval='0 1 * * *',  # Lập lịch chạy vào lúc 1:00 AM mỗi ngày
+    schedule_interval='0 18 * * *',  # 1:00 AM UTC+7 is 18:00 UTC
     catchup=False,  # Không chạy lại các công việc bị bỏ lỡ
 )
 
 def collect_and_save_data():
     crypto_ids = ['BTC', 'ETH', 'USDT','USDC','XRP','ADA','DOGE','MATIC','SOL', "LTC", "DOT", "SHIB", "AVAX", "TRX", "ATOM", "LINK", "XLM", "NEAR"]
-    storage_path_gcs = "gs://crypto-historical-data-2/ver2"
-
+    storage_path_gcs = "gs://crypto-historical-data-2/ver2"    
     main(crypto_ids, storage_path_gcs)
 
 collect_data_task = PythonOperator(

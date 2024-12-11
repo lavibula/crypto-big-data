@@ -3,10 +3,37 @@ from datetime import datetime, timedelta
 import pandas as pd
 import math
 from google.cloud import storage
-from storage import save_to_gcs_parquet
 import dotenv
 import os
 import time
+import os
+import tempfile
+api_key='f007c27012ef526c4a0216b612c9b7f68e4a02430e08925284d2e7b613daa0e2'
+def save_to_gcs_parquet(df : pd.DataFrame, gcs_path : str):
+    """
+    Lưu dữ liệu DataFrame dưới dạng Parquet vào Google Cloud Storage.
+    """
+    # Tạo tệp Parquet tạm thời
+    with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+        local_parquet_path = tmp_file.name  # Lấy đường dẫn tệp tạm thời
+        # Lưu dữ liệu DataFrame dưới dạng Parquet vào tệp tạm thời
+        df.to_parquet(local_parquet_path, engine='pyarrow')
+
+    # Tải tệp lên GCS
+    storage_client = storage.Client.from_service_account_json("utils/btcanalysishust-b10a2ef12088.json")
+    bucket_name, blob_name = gcs_path.replace('gs://', '').split('/', 1)
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    
+    # Tải tệp từ hệ thống cục bộ lên GCS
+    blob.upload_from_filename(local_parquet_path)
+    
+    # Xóa tệp cục bộ sau khi tải lên
+    os.remove(local_parquet_path)
+    
+    print(f"Lưu dữ liệu vào GCS thành công tại: {gcs_path}")
+
+
 def get_data_api(crypto_id : str, end_date : str, num_days : int):
     """
     Fetch cryptocurrency data from the API. Tries with 'kraken' first, then 'coinbase' if the first attempt fails.
@@ -111,7 +138,7 @@ def get_last_saved_date(crypto_id, storage_path : str):
     Kiểm tra ngày cuối cùng đã được lưu trữ trong GCS.
     """
     bucket, dir_identify=storage_path.replace('gs://','').split('/',1)
-    storage_client = storage.Client.from_service_account_json("config/btcanalysishust-b10a2ef12088.json")
+    storage_client = storage.Client.from_service_account_json("utils/btcanalysishust-b10a2ef12088.json")
     blobs = storage_client.list_blobs(bucket, prefix=f"{dir_identify}/{crypto_id}/")
     last_saved_date = None
     for blob in blobs:
