@@ -8,8 +8,8 @@ from time import sleep
 def get_crypto_prices():
     url = "https://api.coingecko.com/api/v3/simple/price"
     params = {
-        "ids": "bitcoin,ethereum,tether,binancecoin,usd-coin,ripple,cardano,dogecoin,matic-network,solana",
-        "vs_currencies": "usd"
+    "ids": "bitcoin,ethereum,tether,usd-coin,ripple,cardano,dogecoin,matic-network,solana,litecoin,polkadot,shiba-inu,tron,cosmos,chainlink,stellar,near",
+    "vs_currencies": "usd"
     }
     
     try:
@@ -41,7 +41,7 @@ def send_to_kafka(prices):
         value_serializer=lambda v: json.dumps(v).encode('utf-8')
     )
     
-    producer.send('crypto-pricess', value=prices)
+    producer.send('crypto-pricessss', value=prices)
     producer.flush()  
     print("Data sent to Kafka:", prices)
 
