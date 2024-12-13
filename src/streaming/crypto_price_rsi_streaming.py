@@ -3,17 +3,17 @@ from pyspark.sql.window import Window
 from pyspark.sql.types import StructType, StructField, StringType, FloatType, DoubleType, IntegerType, LongType
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
-
-gcs_jar_path = os.path.abspath("config/gcs-connector-hadoop3-latest.jar")
 from pyspark.sql import SparkSession
-
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+gcs_jar_path = os.path.join(PROJECT_ROOT, "config", "gcs-connector-hadoop3-latest.jar")
+AUTH_PATH = os.path.join(PROJECT_ROOT, 'config', 'key', 'btcanalysishust-495a3a227f22.json')
 # Khởi tạo SparkSession
 spark = SparkSession.builder \
     .appName("hehee") \
     .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")\
     .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")\
     .config("spark.hadoop.fs.gs.auth.service.account.enable", "true")\
-    .config("spark.hadoop.fs.gs.auth.service.account.json.keyfile", "config/key/btcanalysishust-495a3a227f22.json") \
+    .config("spark.hadoop.fs.gs.auth.service.account.json.keyfile", AUTH_PATH) \
     .config("spark.jars", gcs_jar_path) \
     .config("spark.jars.packages", 
             "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,io.delta:delta-core_2.12:2.2.0") \

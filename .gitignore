@@ -3,7 +3,7 @@
 *.csv
 __pycache__/
 *.pyc
-config/btcanalysishust-52ca6add0469.json
+btcanalysishust-52ca6add0469.json
 test.ipynb
 btcanalysishust-b10a2ef12088.json
 .env
@@ -11,3 +11,5 @@ venv
 /config
 /spark-env
 test.ipynb
+btcanalysishust-b10a2ef12088.json
+airflow\dags\utils\btcanalysishust-b10a2ef12088.json

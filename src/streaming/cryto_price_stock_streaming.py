@@ -6,25 +6,33 @@ from dateutil.relativedelta import relativedelta
 from pyspark.sql.functions import col, max as spark_max, min as spark_min, avg
 from pyspark.sql.window import Window
 import pandas as pd
+import csv
 import io
-keyfile_path = "config/btcanalysishust-b10a2ef12088.json"
-
+import os
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+print(PROJECT_ROOT)
+gcs_jar_path = os.path.join(PROJECT_ROOT, "config", "gcs-connector-hadoop3-latest.jar")
+AUTH_PATH = os.path.join(PROJECT_ROOT, 'config', 'key', 'btcanalysishust-b10a2ef12088.json')
+# Khởi tạo SparkSession
 spark = SparkSession.builder \
-    .appName("KafkaConsumer") \
-  .config("spark.hadoop.google.cloud.auth.service.account.enable", "true") \
-    .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
-    .config("spark.hadoop.fs.gs.auth.type", "OAuth2") \
-    .config("spark.hadoop.fs.gs.project.id", "btcanalysishust") \
-    .config("spark.hadoop.fs.gs.input.close.input.streams.after.task.complete", "true") \
-    .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", keyfile_path) \
+    .appName("hehee") \
+    .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")\
+    .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")\
+    .config("spark.hadoop.fs.gs.auth.service.account.enable", "true")\
+    .config("spark.hadoop.fs.gs.auth.service.account.json.keyfile", AUTH_PATH) \
+    .config("spark.jars", gcs_jar_path) \
+    .config("spark.jars.packages", 
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,io.delta:delta-core_2.12:2.2.0") \
+    .config("spark.hadoop.fs.gs.project.id", "btcanalysishust")\
     .getOrCreate()
+
 
 def get_last_saved_date(crypto_id, storage_path : str):
     """
     Kiểm tra ngày cuối cùng đã được lưu trữ trong GCS.
     """
     bucket, dir_identify=storage_path.replace('gs://','').split('/',1)
-    storage_client = storage.Client.from_service_account_json("config/btcanalysishust-b10a2ef12088.json")
+    storage_client = storage.Client.from_service_account_json(AUTH_PATH)
     blobs = storage_client.list_blobs(bucket, prefix=f"{dir_identify}/{crypto_id}/")
     last_saved_date = None
     for blob in blobs:
@@ -52,7 +60,7 @@ def get_last_day_in_month(crypto_id, storage_path: str):
     year, month = last_month.split('-')
     prefix = f"ver2/{crypto_id}/{year}/{month.zfill(2)}/"
     bucket, dir_identify=storage_path.replace('gs://','').split('/',1)
-    storage_client = storage.Client.from_service_account_json("config/btcanalysishust-b10a2ef12088.json")
+    storage_client = storage.Client.from_service_account_json(AUTH_PATH)
     blobs = storage_client.list_blobs(bucket, prefix=prefix)
     last_saved_day = None
 
@@ -151,14 +159,51 @@ class STOCK:
         combined_data_df = combined_data_df.withColumn("%D", avg("%K").over(window_d))
         
         # Trả về DataFrame với %K và %D
-        return combined_data_df.select( "%K", "%D").tail(1)[0].asDict()
+        return combined_data_df.select( "DATE","CLOSE","%K", "%D").tail(1)[0].asDict()
     def calculate__for_all(self,crypto_ids):
         all_stocks={}
         for crypto_id in crypto_ids:
             all_stocks[crypto_id] = self.calculate(crypto_id)
         return all_stocks
 
+def to_gcs(crypto_ids):
+    stock = STOCK()
+    data = stock.calculate__for_all(crypto_ids)
+    # Convert the dictionary to a list of rows
+    data_for_df = []
+    for coin, values in data.items():
+        row = {
+            'BASE': coin,
+            'DATE': values['DATE'].isoformat(),  # Convert date to string
+            'CLOSE': values['CLOSE'],
+            '%K': values['%K'],
+            '%D': values['%D']
+        }
+        data_for_df.append(row)
+
+    # Google Cloud Storage client
+    client = storage.Client.from_service_account_json(AUTH_PATH)
+
+    # Iterate over each unique coin and save data to individual folders
+    for coin in data.keys():
+        # Filter data for the specific coin
+        coin_data = [row for row in data_for_df if row['BASE'] == coin]
+        # Convert the coin-specific data into CSV format
+        output = io.StringIO()
+        csv_writer = csv.DictWriter(output, fieldnames=['BASE', 'DATE', 'CLOSE', '%K', '%D'])
+        csv_writer.writeheader()
+        csv_writer.writerows(coin_data)
+        output.seek(0)  # Reset the cursor to the start of the StringIO object
+
+        # Define the GCS path for the coin's folder
+        coin_folder_path = f"stock/{coin}/{coin_data[0]['DATE']}.csv"
+        
+        # Save the CSV to GCS
+        bucket = client.bucket('indicator-crypto')  # Replace with your GCS bucket name
+        blob = bucket.blob(coin_folder_path)
+        blob.upload_from_file(output, content_type='text/csv')
+
+    print("Data successfully saved to GCS in separate folders for each coin.")
+
 if __name__=='__main__':
-    sotck=STOCK()
-    data=sotck.calculate__for_all(['BTC','ETH'])
-    print(data)
+    to_gcs()
