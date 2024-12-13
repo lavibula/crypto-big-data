@@ -193,7 +193,7 @@ if __name__ == "__main__":
     if not api_key:
         print("Error: API_KEY is missing in the .env file.")
         exit(1)
-    crypto_ids = ['BTC', 'ETH', 'USDT','USDC','XRP','ADA','DOGE','MATIC','SOL', "LTC", "DOT", "SHIB", "AVAX", "TRX", "ATOM", "LINK", "XLM", "NEAR"]
+    crypto_ids = ['BTC', 'ETH', 'USDT','USDC','XRP','ADA','DOGE','MATIC','SOL', "LTC", "DOT", "SHIB", "TRX", "ATOM", "LINK", "XLM", "NEAR"]
     
     print(f'number of instrumets is {len(crypto_ids)}')
     storage_path_gcs = "gs://crypto-historical-data-2/ver2"
