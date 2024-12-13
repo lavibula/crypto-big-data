@@ -5,3 +5,7 @@ __pycache__/
 *.pyc
 config/btcanalysishust-495a3a227f22.json
 spark-env/
+.env
+venv
+btcanalysishust-b10a2ef12088.json
+test.ipynb
