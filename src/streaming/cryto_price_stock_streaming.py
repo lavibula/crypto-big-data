@@ -15,15 +15,13 @@ gcs_jar_path = os.path.join(PROJECT_ROOT, "config", "gcs-connector-hadoop3-lates
 AUTH_PATH = os.path.join(PROJECT_ROOT, 'config', 'key', 'btcanalysishust-b10a2ef12088.json')
 # Khởi tạo SparkSession
 spark = SparkSession.builder \
-    .appName("hehee") \
-    .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")\
-    .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")\
-    .config("spark.hadoop.fs.gs.auth.service.account.enable", "true")\
-    .config("spark.hadoop.fs.gs.auth.service.account.json.keyfile", AUTH_PATH) \
-    .config("spark.jars", gcs_jar_path) \
-    .config("spark.jars.packages", 
-            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,io.delta:delta-core_2.12:2.2.0") \
-    .config("spark.hadoop.fs.gs.project.id", "btcanalysishust")\
+    .appName("KafkaConsumer") \
+  .config("spark.hadoop.google.cloud.auth.service.account.enable", "true") \
+    .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
+    .config("spark.hadoop.fs.gs.auth.type", "OAuth2") \
+    .config("spark.hadoop.fs.gs.project.id", "btcanalysishust") \
+    .config("spark.hadoop.fs.gs.input.close.input.streams.after.task.complete", "true") \
+    .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", AUTH_PATH) \
     .getOrCreate()
 
 
@@ -206,4 +204,4 @@ def to_gcs(crypto_ids):
     print("Data successfully saved to GCS in separate folders for each coin.")
 
 if __name__=='__main__':
-    to_gcs()
+    to_gcs(['BTC'])
