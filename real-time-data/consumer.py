@@ -22,12 +22,11 @@ schema = StructType([
     StructField("solana", FloatType())
 ])
 
-df = spark.read.parquet("") #batch
 crypto_df = spark \
     .readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "35.206.252.44:9092") \
-    .option("subscribe", "crypto-prices") \
+    .option("subscribe", "crypto-pricessss") \
     .load()
 
 crypto_json_df = crypto_df.selectExpr("CAST(value AS STRING)")
@@ -49,34 +48,4 @@ final_df = crypto_parsed_df.select(
     col("data.solana").alias("solana")
 )
 
-def calculate_statistics(df):
-    print("Calculating Statistics:")
-    print(df.describe().show())
-
-def visualize_data(df):
-    pandas_df = df.toPandas()
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(pandas_df['timestamp'], pandas_df['bitcoin'], label='Bitcoin', marker='o')
-    plt.plot(pandas_df['timestamp'], pandas_df['ethereum'], label='Ethereum', marker='o')
-    plt.xticks(rotation=45)
-    plt.title('Crypto Prices Over Time')
-    plt.xlabel('Timestamp')
-    plt.ylabel('Price (USD)')
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-def process_data():
-    query = final_df.writeStream \
-        .foreachBatch(lambda df, epoch_id: (
-            calculate_statistics(df),
-            visualize_data(df)
-        )) \
-        .outputMode("append") \
-        .start()
-
-    query.awaitTermination()
-
-if __name__ == "__main__":
-    process_data()
+final_df.writeStream.format("console").option("truncate", False).save()

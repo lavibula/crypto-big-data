@@ -1,7 +1,7 @@
 from kafka import KafkaConsumer
 
 consumer = KafkaConsumer(
-    'test_topic', 
+    'crypto-pricessss', 
     bootstrap_servers='35.206.252.44:9092',
     auto_offset_reset='earliest',  
     enable_auto_commit=True,
