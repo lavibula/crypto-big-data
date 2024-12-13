@@ -5,7 +5,9 @@ from pyspark.sql.functions import to_date, col
 from dateutil.relativedelta import relativedelta
 from pyspark.sql.functions import col, max as spark_max, min as spark_min, avg
 from pyspark.sql.window import Window
-keyfile_path = "btcanalysishust-b10a2ef12088.json"
+import pandas as pd
+import io
+keyfile_path = "config/btcanalysishust-b10a2ef12088.json"
 
 spark = SparkSession.builder \
     .appName("KafkaConsumer") \
@@ -17,13 +19,13 @@ spark = SparkSession.builder \
     .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", keyfile_path) \
     .getOrCreate()
 
-
 def get_last_saved_date(crypto_id, storage_path : str):
     """
-    Kiểm tra ngày cuối cùng đã được lưu trữ trong GCS hoặc HDFS.
+    Kiểm tra ngày cuối cùng đã được lưu trữ trong GCS.
     """
-    storage_client = storage.Client.from_service_account_json("btcanalysishust-b10a2ef12088.json")
-    blobs = storage_client.list_blobs(storage_path, prefix=f"ver2/{crypto_id}/")
+    bucket, dir_identify=storage_path.replace('gs://','').split('/',1)
+    storage_client = storage.Client.from_service_account_json("config/btcanalysishust-b10a2ef12088.json")
+    blobs = storage_client.list_blobs(bucket, prefix=f"{dir_identify}/{crypto_id}/")
     last_saved_date = None
     for blob in blobs:
         # Trích xuất ngày từ tên thư mục
@@ -34,8 +36,38 @@ def get_last_saved_date(crypto_id, storage_path : str):
             date = datetime.strptime(f"{year}-{month.zfill(2)}","%Y-%m")
             if last_saved_date is None or date > last_saved_date:
                 last_saved_date = date
+    if  isinstance(last_saved_date, datetime):
+        return last_saved_date.strftime("%Y-%m")
+    else:
+        return last_saved_date
 
-    return last_saved_date.strftime("%Y-%m")
+def get_last_day_in_month(crypto_id, storage_path: str):
+    """
+    Lấy ngày cuối cùng đã được lưu trữ trong tháng gần nhất (dựa trên cột DATE trong file .parquet).
+    """
+    last_month = get_last_saved_date(crypto_id, storage_path)
+    if last_month is None:
+        return None  # Không tìm thấy dữ liệu
+    # Xây dựng đường dẫn thư mục tháng gần nhất
+    year, month = last_month.split('-')
+    prefix = f"ver2/{crypto_id}/{year}/{month.zfill(2)}/"
+    bucket, dir_identify=storage_path.replace('gs://','').split('/',1)
+    storage_client = storage.Client.from_service_account_json("config/btcanalysishust-b10a2ef12088.json")
+    blobs = storage_client.list_blobs(bucket, prefix=prefix)
+    last_saved_day = None
+
+    for blob in blobs:
+        if blob.name.endswith('.parquet'):
+            # Download và đọc file .parquet
+            blob_data = blob.download_as_bytes()
+            df = pd.read_parquet(io.BytesIO(blob_data))
+            if 'DATE' in df.columns:
+                df['DATE'] = pd.to_datetime(df['DATE'])
+                max_date = df['DATE'].max()
+                if last_saved_day is None or max_date > last_saved_day:
+                    last_saved_day = max_date
+
+    return last_saved_day.strftime('%Y-%m-%d') if last_saved_day else None
 
 def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
     """
@@ -43,15 +75,15 @@ def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
 
     Args:
         crypto_id (str): Tên tài sản (crypto, cổ phiếu, v.v.).
-        start_date (str): Ngày bắt đầu (định dạng 'YYYY-MM').
-        end_date (str): Ngày kết thúc (định dạng 'YYYY-MM').
+        start_date (str): Ngày bắt đầu (định dạng 'YYYY-MM-dd').
+        end_date (str): Ngày kết thúc (định dạng 'YYYY-MM-dd').
 
     Returns:
         DataFrame: Bảng Spark chứa tất cả dữ liệu giá hợp nhất.
     """
     # Chuyển đổi chuỗi ngày thành đối tượng datetime
-    start = datetime.strptime(start_date, "%Y-%m")
-    end = datetime.strptime(end_date, "%Y-%m")
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
     
     # Kiểm tra ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc
     if start > end:
@@ -74,8 +106,13 @@ def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
         for df in all_prices[1:]:
             merged_data = merged_data.union(df)
         merged_data = merged_data.withColumn('DATE', to_date('DATE', 'yyyy-MM-dd'))
+
+        # Lọc dữ liệu theo khoảng thời gian
+        filtered_data = merged_data.filter(
+            (col('DATE') >= start_date) & (col('DATE') <= end_date)
+        )
         # Sort by the transformed date column
-        sorted_data = merged_data.orderBy('DATE', ascending= True)
+        sorted_data = filtered_data.orderBy('DATE', ascending= True)
 
         # Sort the DataFrame by the date column
         return sorted_data.select(col('DATE'),col('HIGH'),col('LOW'),col('CLOSE'))
@@ -84,22 +121,16 @@ def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
     
 
 class STOCK:
-    def __init__(self, period_k=9, period_d=6, storage_path='crypto-historical-data-2' ):
+    def __init__(self, period_k=9, period_d=6, storage_path='crypto-historical-data-2/ver2' ):
         self.k=period_k
         self.d=period_d
         self.storage_path=storage_path
     def get_data(self,crypto_id):
-        lastest_month=get_last_saved_date(crypto_id,self.storage_path)
-        comeback_month=(self.k+self.d-1)//28+1
-        start_month=datetime.strptime(lastest_month,'%Y-%m')-relativedelta(months=comeback_month)
-        historical_data_df=get_gcs_price(crypto_id,start_month.strftime('%Y-%m'), lastest_month)
-        # gia tri gia su
-        current_close=95285.96
-        timestap='2024-11-26'
-        
-        current_close_df = spark.createDataFrame([(current_close,current_close,current_close, timestap)], ["CLOSE",'HIGH',"LOW",'DATE'])
-        combined_data_df = historical_data_df.unionByName(current_close_df,allowMissingColumns=True)
-        return spark.createDataFrame(combined_data_df.tail(self.k+self.d-1))
+        lastest_day=get_last_day_in_month(crypto_id,self.storage_path)
+        comeback_day=self.k+self.d-1
+        start_day=datetime.strptime(lastest_day,'%Y-%m-%d')-relativedelta(days=comeback_day)
+        historical_data_df=get_gcs_price(crypto_id,start_day.strftime('%Y-%m-%d'), lastest_day)
+        return historical_data_df
     def calculate(self, crypto_id):
         combined_data_df=self.get_data(crypto_id)
         # Kiểm tra cột HIGH và LOW
@@ -126,3 +157,8 @@ class STOCK:
         for crypto_id in crypto_ids:
             all_stocks[crypto_id] = self.calculate(crypto_id)
         return all_stocks
+
+if __name__=='__main__':
+    sotck=STOCK()
+    data=sotck.calculate__for_all(['BTC','ETH'])
+    print(data)

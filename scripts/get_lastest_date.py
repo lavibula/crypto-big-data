@@ -1,7 +1,6 @@
 from collect_data import get_last_saved_date
 from google.cloud import storage
 import pandas as pd
-from datetime import datetime
 import io
 
 def get_last_day_in_month(crypto_id, storage_path: str):
