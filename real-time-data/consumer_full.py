@@ -7,7 +7,8 @@ consumer = KafkaConsumer(
     'realtime-full',
     bootstrap_servers='35.206.252.44:9092',
     security_protocol="PLAINTEXT",
-    value_deserializer=lambda v: json.loads(v.decode('utf-8'))
+    value_deserializer=lambda v: json.loads(v.decode('utf-8')),
+    auto_offset_reset='earliest',
 )
 
 def format_message(message):
@@ -40,7 +41,7 @@ def send2postgres(coin_info: dict):
     cur.execute(f"SELECT COUNT(*) FROM {table}")
     # If table size is 2880 (number of 30 second intervals in 24 hours), drop the oldest row
     if cur.fetchone()[0] == 2880 * length:
-        cur.execute(f"DELETE FROM {table} ORDER BY UPDATED_AT LIMIT 1 ASC;")
+        cur.execute(f"DELETE FROM {table} ORDER BY UPDATED_AT LIMIT 1 ASC WHERE BASE = '{coin_info['coin']}'")
     # Insert new row
     cur.execute(f"""
                 INSERT INTO bigdata.price_24h (BASE, PRICE, MARKET_CAP, VOLUME_24H, CHANGE_24H, UPDATED_AT)
