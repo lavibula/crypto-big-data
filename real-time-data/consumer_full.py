@@ -42,6 +42,11 @@ def send2postgres(coin_info: dict):
     # If table size is 2880 (number of 30 second intervals in 24 hours), drop the oldest row
     if cur.fetchone()[0] == 2880 * length:
         cur.execute(f"DELETE FROM {table} ORDER BY UPDATED_AT LIMIT 1 ASC WHERE BASE = '{coin_info['coin']}'")
+    # Check if key already exists
+    # This is a bug that has not been examined, but for now, just check for duplicates and ignore them
+    cur.execute(f"SELECT COUNT(*) FROM {table} WHERE BASE = '{coin_info['coin']}' AND UPDATED_AT = TO_TIMESTAMP({coin_info['updated_at']})")
+    if cur.fetchone()[0] > 0:
+        return
     # Insert new row
     cur.execute(f"""
                 INSERT INTO bigdata.price_24h (BASE, PRICE, MARKET_CAP, VOLUME_24H, CHANGE_24H, UPDATED_AT)
