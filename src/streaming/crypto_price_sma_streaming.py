@@ -86,17 +86,21 @@ historical_schema = StructType([
 
 
 def read_historical_data(coin):
-    return (
+    df = (
         spark.read.schema(historical_schema).format("parquet")
         .load(f"gs://crypto-historical-data-2/ver2/{coin}/2024/*")
         .select(F.col("DATE").cast("timestamp"), "CLOSE")
     )
+    
+    df.cache()
+    
+    return df
 
 def process_coin(coin, micro_batch_latest_df):
     historical_data_df = read_historical_data(coin)
     micro_batch = micro_batch_latest_df.select("DATE", coin).withColumnRenamed(coin, "CLOSE")
     combined_df = micro_batch.unionByName(historical_data_df)
-
+    micro_batch.write.format("console").option("truncate", False).save()
     window_spec = Window.orderBy("DATE").rowsBetween(Window.unboundedPreceding, 0)
     combined_df = combined_df.withColumn(f"SMA_5", F.avg(F.col("CLOSE")).over(window_spec.rowsBetween(-4, 0)))
     combined_df = combined_df.withColumn(f"SMA_10", F.avg(F.col("CLOSE")).over(window_spec.rowsBetween(-9, 0)))
@@ -119,7 +123,9 @@ def process_coin(coin, micro_batch_latest_df):
         .option("path", tmp_dir) \
         .mode("append") \
         .save()
-    
+    combined_df.unpersist()  
+    historical_data_df.unpersist()  
+
 def process_batch(micro_batch_df, batch_id):
     micro_batch_latest_df = (
         micro_batch_df
@@ -127,12 +133,12 @@ def process_batch(micro_batch_df, batch_id):
         .filter(F.col("row_num") == 1)
         .drop("row_num")
     )
-    
+    micro_batch_latest_df.cache()
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_coin, coin, micro_batch_latest_df) for coin in column_names]
         for future in as_completed(futures):
             print(future.result()) 
-
+    micro_batch_latest_df.unpersist()
 # Thực thi stream
 query = crypto_parsed_df.writeStream \
     .foreachBatch(process_batch) \

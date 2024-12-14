@@ -89,11 +89,16 @@ historical_schema = StructType([
 
 # Function to read historical data from Parquet
 def read_historical_data(coin):
-    return (
+    df = (
         spark.read.schema(historical_schema).format("parquet")
         .load(f"gs://crypto-historical-data-2/ver2/{coin}/2024/*")
         .select(F.col("DATE").cast("timestamp"), "CLOSE")
     )
+    
+    df.cache()
+    
+    return df
+
 
 # Function to calculate RSI-14
 def calculate_rsi(df, window_size=14):
@@ -109,7 +114,7 @@ def calculate_rsi(df, window_size=14):
     df = df.withColumn("rs", F.col("avg_gain") / F.col("avg_loss"))
     df = df.withColumn("RSI_14", 100 - (100 / (1 + F.col("rs"))))
     
-    return df
+    return df.select("DATE", "CLOSE", "RSI_14")
 
 # Function to process each coin and calculate RSI
 def process_coin(coin, micro_batch_latest_df):
@@ -127,12 +132,15 @@ def process_coin(coin, micro_batch_latest_df):
 
     tmp_dir = f"gs://indicator-crypto/rsi_results/tmp/{coin}"
 
+    #combined_df.write.format("console").option("truncate", False).save()
     combined_df.write \
         .format("csv") \
         .option("header", "true") \
         .option("path", tmp_dir) \
         .mode("append") \
         .save()
+    combined_df.unpersist()  
+    historical_data_df.unpersist()  
 
 # Function to process the batch
 def process_batch(micro_batch_df, batch_id):
@@ -142,12 +150,13 @@ def process_batch(micro_batch_df, batch_id):
         .filter(F.col("row_num") == 1)
         .drop("row_num")
     )
+    micro_batch_latest_df.cache()
     
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_coin, coin, micro_batch_latest_df) for coin in column_names]
         for future in as_completed(futures):
             print(future.result())
-
+    micro_batch_latest_df.unpersist()
 # Start the streaming job
 query = crypto_parsed_df.writeStream \
     .foreachBatch(process_batch) \
