@@ -26,8 +26,6 @@ def format_message(message):
     return coin_infos
 
 def send2postgres(coin_info: dict):
-    coins = "bitcoin,ethereum,tether,usd-coin,ripple,cardano,dogecoin,matic-network,solana,litecoin,polkadot,shiba-inu,tron,cosmos,chainlink,stellar,near"
-    length = len(coins.split(","))
     import psycopg2
     table = "bigdata.price_24h"
     conn = psycopg2.connect(
@@ -38,9 +36,9 @@ def send2postgres(coin_info: dict):
     )
     cur = conn.cursor()
     # Get number of rows
-    cur.execute(f"SELECT COUNT(*) FROM {table}")
+    cur.execute(f"SELECT COUNT(*) FROM {table} WHERE BASE = '{coin_info['coin']}")
     # If table size is 2880 (number of 30 second intervals in 24 hours), drop the oldest row
-    if cur.fetchone()[0] == 2880 * length:
+    if cur.fetchone()[0] == 2880:
         cur.execute(f"DELETE FROM {table} ORDER BY UPDATED_AT LIMIT 1 ASC WHERE BASE = '{coin_info['coin']}'")
     # Check if key already exists
     # This is a bug that has not been examined, but for now, just check for duplicates and ignore them
