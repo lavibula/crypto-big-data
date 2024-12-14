@@ -139,7 +139,7 @@ def process_coin(coin, micro_batch_latest_df):
     historical_data_df = read_historical_data(coin)
     # print(coin)
     # print("historical_data_df")
-    historical_data_df.show(truncate=False)
+    # historical_data_df.show(truncate=False)
     micro_batch = micro_batch_latest_df.select("DATE", coin).withColumnRenamed(coin, "CLOSE")
     # print("micro_batch")
     # micro_batch.show(truncate=False)
@@ -160,14 +160,19 @@ def process_coin(coin, micro_batch_latest_df):
     combined_df = combined_df.filter(F.col("DATE") >= current_date)
     # combined_df.show()
     
-    # Lưu kết quả vào GCS
-    tmp_dir = f"gs://indicator-crypto/ema_results/tmp/{coin}"
-    combined_df.write \
-        .format("csv") \
-        .option("header", "true") \
-        .option("path", tmp_dir) \
-        .mode("append") \
-        .save()
+    # Check if combined_df has any data
+    if combined_df.count() > 0:
+        # Lưu kết quả vào GCS nếu có dữ liệu
+        tmp_dir = f"gs://indicator-crypto/ema_results/tmp/{coin}"
+        combined_df.write \
+            .format("csv") \
+            .option("header", "true") \
+            .option("path", tmp_dir) \
+            .mode("append") \
+            .save()
+        print(f"{coin} wrote")
+    else:
+        print(f"No data for coin: {coin} to write")
 
 
 def process_batch(micro_batch_df, batch_id):

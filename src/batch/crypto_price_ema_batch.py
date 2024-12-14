@@ -94,7 +94,7 @@ def process_coin(coin):
         .format("csv") \
         .option("header", "true") \
         .option("path", tmp_dir) \
-        .mode("append") \
+        .mode("overwrite") \
         .save()
 
     return historical_data_df
