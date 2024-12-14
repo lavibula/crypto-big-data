@@ -1,3 +1,10 @@
+hadoopFilesPath = r"\home\admin\airflow_venv\Lib\site-packages\pyspark\hadoop"
+import os
+os.environ["HADOOP_HOME"] = hadoopFilesPath
+os.environ["hadoop.home.dir"] = hadoopFilesPath
+os.environ["PATH"] = os.environ["PATH"] + f";{hadoopFilesPath}\\bin"
+os.environ["PYSPARK_PYTHON"] = "python"
+
 from pyspark.sql import SparkSession, functions as F
 from pyspark.sql.window import Window
 from pyspark.sql.types import StructType, StructField, StringType, FloatType, DoubleType, IntegerType, LongType

@@ -102,7 +102,10 @@ def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
     current = start.replace(day=1)  # Đặt ngày thành ngày đầu tiên của tháng
     while current <= end:
         curr_price_dir=f"gs://crypto-historical-data-2/ver2/{crypto_id}/{current.year}/{current.month:02}/data.parquet"
-        all_prices.append(spark.read.parquet(curr_price_dir))
+        try:
+            all_prices.append(spark.read.parquet(curr_price_dir))
+        except:
+            pass
         if current.month == 12:  # Nếu là tháng 12, chuyển sang tháng 1 năm sau
             current = current.replace(year=current.year + 1, month=1)
         else:
@@ -127,12 +130,16 @@ def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
     
 
 class STOCK:
-    def __init__(self, period_k=9, period_d=6, storage_path='crypto-historical-data-2/ver2' ):
+    def __init__(self, period_k=9, period_d=6,for_day = None, storage_path='crypto-historical-data-2/ver2' ):
         self.k=period_k
         self.d=period_d
         self.storage_path=storage_path
+        self.for_day=for_day
     def get_data(self,crypto_id):
-        lastest_day=get_last_day_in_month(crypto_id,self.storage_path)
+        if self.for_day:
+            lastest_day=self.for_day
+        else:
+            lastest_day=get_last_day_in_month(crypto_id,self.storage_path)
         comeback_day=self.k+self.d-1
         start_day=datetime.strptime(lastest_day,'%Y-%m-%d')-relativedelta(days=comeback_day)
         historical_data_df=get_gcs_price(crypto_id,start_day.strftime('%Y-%m-%d'), lastest_day)
@@ -194,7 +201,7 @@ def to_gcs(crypto_ids):
         output.seek(0)  # Reset the cursor to the start of the StringIO object
 
         # Define the GCS path for the coin's folder
-        coin_folder_path = f"stock/{coin}/{coin_data[0]['DATE']}.csv"
+        coin_folder_path = f"stock/tmp/{coin}/{coin_data[0]['DATE']}.csv"
         
         # Save the CSV to GCS
         bucket = client.bucket('indicator-crypto')  # Replace with your GCS bucket name
@@ -204,4 +211,4 @@ def to_gcs(crypto_ids):
     print("Data successfully saved to GCS in separate folders for each coin.")
 
 if __name__=='__main__':
-    to_gcs(['BTC'])
+    to_gcs(['BTC', 'ETH', 'USDT','USDC','XRP','ADA','DOGE','MATIC','SOL'])
