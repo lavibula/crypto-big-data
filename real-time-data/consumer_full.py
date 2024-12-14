@@ -36,7 +36,7 @@ def send2postgres(coin_info: dict):
     )
     cur = conn.cursor()
     # Get number of rows
-    cur.execute(f"SELECT COUNT(*) FROM {table} WHERE BASE = '{coin_info['coin']}")
+    cur.execute(f"SELECT COUNT(*) FROM {table} WHERE BASE = '{coin_info['coin']}'")
     # If table size is 2880 (number of 30 second intervals in 24 hours), drop the oldest row
     if cur.fetchone()[0] == 2880:
         cur.execute(f"DELETE FROM {table} ORDER BY UPDATED_AT LIMIT 1 ASC WHERE BASE = '{coin_info['coin']}'")
