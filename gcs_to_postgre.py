@@ -1,10 +1,11 @@
+hadoopFilesPath = r"G:\20232\intern ai cmc\big data\crypto-big-data\venv\Lib\site-packages\pyspark\hadoop"
+import os
+os.environ["HADOOP_HOME"] = hadoopFilesPath
+os.environ["hadoop.home.dir"] = hadoopFilesPath
+os.environ["PATH"] = os.environ["PATH"] + f";{hadoopFilesPath}\\bin"
+os.environ["PYSPARK_PYTHON"] = "python"
 from pyspark.sql import SparkSession
-from google.cloud import storage
-from datetime import datetime
-from pyspark.sql import SparkSession, functions as F
-from pyspark.sql.window import Window
 from pyspark.sql.types import StructType, StructField, StringType, FloatType, DoubleType, IntegerType, LongType
-from pyspark import SparkContext
 import os
 PROJECT_ROOT = os.path.dirname(__file__)
 print(PROJECT_ROOT)
@@ -13,7 +14,7 @@ AUTH_PATH = os.path.join(PROJECT_ROOT, 'config', 'key', 'btcanalysishust-b10a2ef
 # Khởi tạo SparkSession
 spark = SparkSession.builder \
     .appName("KafkaConsumer") \
-  .config("spark.hadoop.google.cloud.auth.service.account.enable", "true") \
+    .config("spark.hadoop.google.cloud.auth.service.account.enable", "true") \
     .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
     .config("spark.hadoop.fs.gs.auth.type", "OAuth2") \
     .config("spark.hadoop.fs.gs.project.id", "btcanalysishust") \
