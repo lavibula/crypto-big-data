@@ -8,20 +8,44 @@ import datetime
 hadoop_home = r"D:\Empty\hadoop\hadoop"
 KEY_FILE = r"D:\Empty\btcanalysishust-d7c3a4830bef.json"
 gcs_connector_jar = os.path.join(hadoop_home, 'share', 'hadoop', 'tools', 'lib', 'gcs-connector-hadoop3-latest.jar')
+postgresql_jar = os.path.join(hadoop_home, 'share', 'hadoop', 'tools', 'lib', 'postgresql-42.7.4.jar')
 
 # spark.stop()
 # def get_spark_session():
+# spark = SparkSession.builder \
+#     .appName("GCS Connector Test") \
+#     .config("spark.driver.extraClassPath", gcs_connector_jar) \
+#     .config("spark.executor.extraClassPath", gcs_connector_jar) \
+#     .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
+#     .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
+#     .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", KEY_FILE) \
+#     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.3") \
+#     .master("local[*]") \
+#     .getOrCreate()
+
+# spark = SparkSession.builder \
+#     .appName("CryptoStreamingEMAProcessor") \
+#     .config("spark.driver.extraClassPath", f"{gcs_connector_jar},{postgresql_jar}") \
+#     .config("spark.executor.extraClassPath", f"{gcs_connector_jar},{postgresql_jar}") \
+#     .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
+#     .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
+#     .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", KEY_FILE) \
+#     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.3") \
+#     .master("local[*]") \
+#     .getOrCreate()
 spark = SparkSession.builder \
-    .appName("GCS Connector Test") \
-    .config("spark.driver.extraClassPath", gcs_connector_jar) \
-    .config("spark.executor.extraClassPath", gcs_connector_jar) \
-    .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
-    .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem") \
-    .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", KEY_FILE) \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.3, org.postgresql:postgresql:42.7.4") \
-    .master("local[*]") \
-    .getOrCreate()
-            
+    .appName("bull") \
+    .config("spark.hadoop.fs.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem")\
+    .config("spark.hadoop.fs.AbstractFileSystem.gs.impl", "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFS")\
+    .config("spark.hadoop.fs.gs.auth.service.account.enable", "true")\
+    .config("spark.hadoop.fs.gs.auth.service.account.json.keyfile", KEY_FILE) \
+    .config("spark.jars", f"{gcs_connector_jar},{postgresql_jar}") \
+    .config("spark.jars.packages", 
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.3") \
+    .config("spark.hadoop.fs.gs.project.id", "btcanalysishust")\
+    .config("spark.executor.heartbeatInterval","3600s")\
+    .config("spark.network.timeout","4000s")\
+    .getOrCreate() 
     
 # Schema của dữ liệu Kafka
 schema = StructType([
@@ -135,34 +159,95 @@ def calculate_ema(df, column, period):
     ema_udf = calculate_ema_udf(period)
     return df.withColumn(f"EMA_{period}", ema_udf(F.col(f"{column}_LIST"))).drop(f"{column}_LIST")
 
+# def process_coin(coin, micro_batch_latest_df):
+#     historical_data_df = read_historical_data(coin)
+#     # print(coin)
+#     # print("historical_data_df")
+#     # historical_data_df.show(truncate=False)
+#     micro_batch = micro_batch_latest_df.select("DATE", coin).withColumnRenamed(coin, "CLOSE")
+#     # print("micro_batch")
+#     # micro_batch.show(truncate=False)
+#     # Kết hợp dữ liệu hiện tại với dữ liệu lịch sử
+#     combined_df = micro_batch.unionByName(historical_data_df)
+#     # print("combined_df")
+#     # combined_df.show()
+    
+#     # Tính toán EMA
+#     ema_periods = [5, 10, 20, 50, 100, 200, 12, 13, 26]
+#     for period in ema_periods:
+#         combined_df = calculate_ema(combined_df, "CLOSE", period)
+    
+#     combined_df = combined_df.withColumn("MACD", 
+#         F.col("EMA_12") - F.col("EMA_26")
+#     )
+#     # Sắp xếp và lọc dữ liệu theo ngày
+#     combined_df = combined_df.select("DATE", "CLOSE", *[f"EMA_{period}" for period in ema_periods], "MACD").orderBy("DATE", ascending=False)
+    
+#     current_date = F.current_date() 
+#     combined_df = combined_df.filter(F.col("DATE") >= current_date)
+    # # combined_df.show()
+    
+    # # Check if combined_df has any data
+    # if combined_df.count() > 0:
+    #     # Lưu kết quả vào GCS nếu có dữ liệu
+    #     tmp_dir = f"gs://indicator-crypto/ema_results/tmp/{coin}"
+    #     combined_df.write \
+    #         .format("csv") \
+    #         .option("header", "true") \
+    #         .option("path", tmp_dir) \
+    #         .mode("append") \
+    #         .save()
+    #     print(f"{coin} wrote")
+    # else:
+    #     print(f"No data for coin: {coin} to write")
+
 def process_coin(coin, micro_batch_latest_df):
     historical_data_df = read_historical_data(coin)
-    # print(coin)
-    # print("historical_data_df")
-    # historical_data_df.show(truncate=False)
     micro_batch = micro_batch_latest_df.select("DATE", coin).withColumnRenamed(coin, "CLOSE")
-    # print("micro_batch")
-    # micro_batch.show(truncate=False)
+    # return micro_batch
     # Kết hợp dữ liệu hiện tại với dữ liệu lịch sử
     combined_df = micro_batch.unionByName(historical_data_df)
-    # print("combined_df")
-    # combined_df.show()
+    
+    # Thêm các cột thiếu với giá trị None
+    combined_df = combined_df.withColumn("BASE", F.lit(coin)) \
+        .withColumn("OPEN", F.lit(None).cast("double")) \
+        .withColumn("HIGH", F.lit(None).cast("double")) \
+        .withColumn("LOW", F.lit(None).cast("double")) \
+        .withColumn("VOLUME", F.lit(None).cast("double")) \
+        .withColumn("YEAR", F.year("DATE")) \
+        .withColumn("MONTH", F.month("DATE"))
     
     # Tính toán EMA
     ema_periods = [5, 10, 20, 50, 100, 200, 12, 13, 26]
     for period in ema_periods:
         combined_df = calculate_ema(combined_df, "CLOSE", period)
     
-    # Sắp xếp và lọc dữ liệu theo ngày
-    combined_df = combined_df.select("DATE", "CLOSE", *[f"EMA_{period}" for period in ema_periods]).orderBy("DATE", ascending=False)
+    # Thêm cột MACD
+    combined_df = combined_df.withColumn("MACD", 
+        F.col("EMA_12") - F.col("EMA_26")
+    )
     
+    # Sắp xếp và chuẩn bị dữ liệu
+    combined_df = combined_df.select(
+        "BASE",
+        F.date_format("DATE", "yyyy-MM-dd").alias("DATE"),
+        "OPEN",
+        "CLOSE",
+        "HIGH", 
+        "LOW",  
+        "VOLUME", 
+        "YEAR",
+        "MONTH",
+        *[F.col(f"EMA_{period}").alias(f"ema{period}") for period in ema_periods],
+        F.col("MACD").alias("macd")
+    ).orderBy("DATE", ascending=False)
+    # return combined_df
+
     current_date = F.current_date() 
     combined_df = combined_df.filter(F.col("DATE") >= current_date)
-    # combined_df.show()
     
-    # Check if combined_df has any data
+    # Lưu kết quả vào GCS
     if combined_df.count() > 0:
-        # Lưu kết quả vào GCS nếu có dữ liệu
         tmp_dir = f"gs://indicator-crypto/ema_results/tmp/{coin}"
         combined_df.write \
             .format("csv") \
@@ -170,11 +255,27 @@ def process_coin(coin, micro_batch_latest_df):
             .option("path", tmp_dir) \
             .mode("append") \
             .save()
-        print(f"{coin} wrote")
+        
+        # Đẩy dữ liệu vào PostgreSQL
+        try:
+            combined_df.write \
+                .format("jdbc") \
+                .option("url", "jdbc:postgresql://34.80.252.31:5432/combined") \
+                .option("dbtable", "bigdata.ema") \
+                .option("user", "nmt") \
+                .option("password", "nmt_acc") \
+                .option("driver", "org.postgresql.Driver") \
+                .mode("append") \
+                .save()
+            print(f"Successfully wrote data for {coin}")
+            return combined_df
+        except Exception as e:
+            print(f"Error writing data for {coin}: {e}")
+            import traceback
+            traceback.print_exc()
     else:
         print(f"No data for coin: {coin} to write")
-
-
+        
 def process_batch(micro_batch_df, batch_id):
     micro_batch_latest_df = (
         micro_batch_df
@@ -183,15 +284,15 @@ def process_batch(micro_batch_df, batch_id):
         .drop("row_num")
     )
     
-    # Sử dụng ThreadPoolExecutor để xử lý nhiều đồng tiền song song
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_coin, coin, micro_batch_latest_df) for coin in column_names]
-        for future in as_completed(futures):
-            print(future.result())
-    # for coin in column_names:
-    #     process_coin(coin, micro_batch_latest_df)
-    #     # result.show()
-    #     break
+    # # Sử dụng ThreadPoolExecutor để xử lý nhiều đồng tiền song song
+    # with ThreadPoolExecutor() as executor:
+    #     futures = [executor.submit(process_coin, coin, micro_batch_latest_df) for coin in column_names]
+    #     for future in as_completed(futures):
+    #         print(future.result())
+    for coin in column_names:
+        result = process_coin(coin, micro_batch_latest_df)
+        result.show()
+        break
     
 # Chạy job streaming
 query = crypto_parsed_df.writeStream \

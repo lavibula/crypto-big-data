@@ -103,7 +103,11 @@ def process_coin(coin):
     ema_periods = [5, 10, 20, 50, 100, 200, 13, 12, 26]
     for period in ema_periods:
         historical_data_df = calculate_ema(historical_data_df, "CLOSE", period)
-
+        
+    # Thêm cột MACD = EMA12 - EMA26
+    historical_data_df = historical_data_df.withColumn("MACD", 
+        F.col("EMA_12") - F.col("EMA_26")
+    )
     # historical_data_df = historical_data_df.select("DATE", "CLOSE", *[f"EMA_{period}" for period in ema_periods]).orderBy("DATE", ascending=False)
     
     # Thêm cột BASE để phân biệt dữ liệu
@@ -120,16 +124,17 @@ def process_coin(coin):
         "VOLUME", 
         F.year("DATE").alias("YEAR"),
         F.month("DATE").alias("MONTH"),
-        *[F.col(f"EMA_{period}").alias(f"ema{period}") for period in ema_periods]
+        *[F.col(f"EMA_{period}").alias(f"ema{period}") for period in ema_periods],
+        "MACD"
     ).orderBy("DATE", ascending=False)
     historical_data_df.printSchema()
-    # tmp_dir = f"gs://indicator-crypto/ema_results/batch/{coin}"
-    # historical_data_df.write \
-    #     .format("csv") \
-    #     .option("header", "true") \
-    #     .option("path", tmp_dir) \
-    #     .mode("overwrite") \
-    #     .save()
+    tmp_dir = f"gs://indicator-crypto/ema_results/batch/{coin}"
+    historical_data_df.write \
+        .format("csv") \
+        .option("header", "true") \
+        .option("path", tmp_dir) \
+        .mode("overwrite") \
+        .save()
     
     # historical_data_df.write \
     #     .format("jdbc") \
@@ -143,7 +148,7 @@ def process_coin(coin):
     try:
         # Print first few rows to verify data
         print("Sample data:")
-        historical_data_df.show(5)
+        # historical_data_df.show(5)
 
         # Attempt to write with more verbose error handling
         # historical_data_df.write \
@@ -162,7 +167,7 @@ def process_coin(coin):
             .option("user", "nmt") \
             .option("password", "nmt_acc") \
             .option("driver", "org.postgresql.Driver") \
-            .mode("append") \
+            .mode("overwrite") \
             .save()
 
         print(f"Successfully wrote data for {coin}")
