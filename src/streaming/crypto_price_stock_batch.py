@@ -4,7 +4,10 @@ from datetime import datetime
 from pyspark.sql.functions import to_date, col
 from dateutil.relativedelta import relativedelta
 from pyspark.sql.functions import col, max as spark_max, min as spark_min, avg
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.types import StructType, StructField, StringType, FloatType, DoubleType, IntegerType, LongType
 from pyspark.sql.window import Window
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import pandas as pd
 import csv
 import io
@@ -24,6 +27,18 @@ spark = SparkSession.builder \
     .config("spark.hadoop.google.cloud.auth.service.account.json.keyfile", AUTH_PATH) \
     .getOrCreate()
 
+historical_schema = StructType([
+    StructField("BASE", StringType(), True),  
+    StructField("DATE", StringType(), True),
+    StructField("OPEN", DoubleType(), True),
+    StructField("HIGH", DoubleType(), True),
+    StructField("LOW", DoubleType(), True),
+    StructField("CLOSE", DoubleType(), True),
+    StructField("VOLUME", DoubleType(), True),
+    StructField("YEAR", IntegerType(), True),
+    StructField("MONTH", IntegerType(), True),
+    StructField("__index_level_0__", LongType(), True)
+])
 
 def get_last_saved_date(crypto_id, storage_path : str):
     """
@@ -74,7 +89,25 @@ def get_last_day_in_month(crypto_id, storage_path: str):
                     last_saved_day = max_date
 
     return last_saved_day.strftime('%Y-%m-%d') if last_saved_day else None
+def get_gcs_paths(start_date_str, end_date_str, crypto_id):
+    # Convert input strings to datetime objects
+    start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
 
+    # List to hold the GCS paths
+    gcs_paths = []
+
+    # Loop through months between start_date and end_date
+    current_date = start_date
+    while current_date <= end_date:
+        # Generate the GCS path for the current month
+        path = f"gs://crypto-historical-data-2/ver2/{crypto_id}/{current_date.year}/{current_date.month:02}/data.parquet"
+        gcs_paths.append(path)
+
+        # Move to the next month
+        current_date += relativedelta(months=1)
+
+    return gcs_paths
 def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
     """
     Lấy dữ liệu giá từ GCS trong khoảng thời gian chỉ định và hợp nhất thành một bảng Spark.
@@ -91,40 +124,19 @@ def get_gcs_price(crypto_id : str, start_date : str , end_date : str):
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
     
-    # Kiểm tra ngày bắt đầu phải nhỏ hơn hoặc bằng ngày kết thúc
-    if start > end:
-        raise ValueError("start_date phải nhỏ hơn hoặc bằng end_date")
-    
-    # Khởi tạo danh sách kết quả
-    all_prices = []
-    
-    # Lặp qua từng tháng
-    current = start.replace(day=1)  # Đặt ngày thành ngày đầu tiên của tháng
-    while current <= end:
-        curr_price_dir=f"gs://crypto-historical-data-2/ver2/{crypto_id}/{current.year}/{current.month:02}/data.parquet"
-        try:
-            all_prices.append(spark.read.parquet(curr_price_dir))
-        except:
-            pass
-        if current.month == 12:  # Nếu là tháng 12, chuyển sang tháng 1 năm sau
-            current = current.replace(year=current.year + 1, month=1)
-        else:
-            current = current.replace(month=current.month + 1)
+    all_prices=spark.read.schema(historical_schema).parquet(*get_gcs_paths(start_date,end_date,crypto_id))
     if all_prices:
-        merged_data = all_prices[0]
-        for df in all_prices[1:]:
-            merged_data = merged_data.union(df)
-        merged_data = merged_data.withColumn('DATE', to_date('DATE', 'yyyy-MM-dd'))
+        all_prices = all_prices.withColumn('DATE', to_date('DATE', 'yyyy-MM-dd'))
 
         # Lọc dữ liệu theo khoảng thời gian
-        filtered_data = merged_data.filter(
+        filtered_data = all_prices.filter(
             (col('DATE') >= start_date) & (col('DATE') <= end_date)
         )
         # Sort by the transformed date column
         sorted_data = filtered_data.orderBy('DATE', ascending= True)
 
         # Sort the DataFrame by the date column
-        return sorted_data.select(col('DATE'),col('HIGH'),col('LOW'),col('CLOSE'))
+        return sorted_data.select(col('BASE'),col('DATE'),col('HIGH'),col('LOW'),col('CLOSE'))
     else:
         raise ValueError("Không tìm thấy dữ liệu trong khoảng thời gian được chỉ định.")
     
@@ -162,51 +174,32 @@ class STOCK:
         # Sử dụng cửa sổ để tính trung bình động cho %D
         window_d = Window.orderBy("DATE").rowsBetween(-(self.d - 1), 0)
         combined_data_df = combined_data_df.withColumn("%D", avg("%K").over(window_d))
-        
+        # Collect all rows and access the last one
+        combined_data__lastest_df = (
+            combined_data_df
+            .withColumn("row_num", F.row_number().over(Window.orderBy(F.col("DATE").desc())))
+            .filter(F.col("row_num") == 1)
+            .drop("row_num")
+        )
+        combined_data__lastest_df.show()
+
         # Trả về DataFrame với %K và %D
-        return combined_data_df.select( "DATE","CLOSE","%K", "%D").tail(1)[0].asDict()
-    def calculate__for_all(self,crypto_ids):
-        all_stocks={}
-        for crypto_id in crypto_ids:
-            all_stocks[crypto_id] = self.calculate(crypto_id)
-        return all_stocks
-
-def to_gcs(crypto_ids):
+        return combined_data__lastest_df.select("BASE","DATE","CLOSE","%K", "%D")
+def process_cryto(crypto_id):
     stock = STOCK()
-    data = stock.calculate__for_all(crypto_ids)
-    # Convert the dictionary to a list of rows
-    data_for_df = []
-    for coin, values in data.items():
-        row = {
-            'BASE': coin,
-            'DATE': values['DATE'].isoformat(),  # Convert date to string
-            'CLOSE': values['CLOSE'],
-            '%K': values['%K'],
-            '%D': values['%D']
-        }
-        data_for_df.append(row)
-
-    # Google Cloud Storage client
-    client = storage.Client.from_service_account_json(AUTH_PATH)
-
-    # Iterate over each unique coin and save data to individual folders
-    for coin in data.keys():
-        # Filter data for the specific coin
-        coin_data = [row for row in data_for_df if row['BASE'] == coin]
-        # Convert the coin-specific data into CSV format
-        output = io.StringIO()
-        csv_writer = csv.DictWriter(output, fieldnames=['BASE', 'DATE', 'CLOSE', '%K', '%D'])
-        csv_writer.writeheader()
-        csv_writer.writerows(coin_data)
-        output.seek(0)  # Reset the cursor to the start of the StringIO object
-
-        # Define the GCS path for the coin's folder
-        coin_folder_path = f"stock/tmp/{coin}/{coin_data[0]['DATE']}.csv"
-        
-        # Save the CSV to GCS
-        bucket = client.bucket('indicator-crypto')  # Replace with your GCS bucket name
-        blob = bucket.blob(coin_folder_path)
-        blob.upload_from_file(output, content_type='text/csv')
+    df=stock.calculate(crypto_id)
+    tmp_dir = f"gs://indicator-crypto/stock/batch/{crypto_id}"
+    df.write \
+        .format("csv") \
+        .option("header", "true") \
+        .option("path", tmp_dir) \
+        .mode("append") \
+        .save()
+def to_gcs(crypto_ids):
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_cryto, coin) for coin in crypto_ids]
+        for future in as_completed(futures):
+            print(future.result()) 
 
     print("Data successfully saved to GCS in separate folders for each coin.")
 
